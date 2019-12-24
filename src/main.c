@@ -2,12 +2,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <time.h>
 
 #define ERROR -1
 #define BACKLOG 32
+
+void* send_time(void *sockfd);
 
 int main(int argc, char *argv[]) {
     // attempt to setup an endpoint for communication
@@ -41,19 +44,37 @@ int main(int argc, char *argv[]) {
     }
 
     socklen_t length = sizeof(address);
-    int clientfd = accept(servfd, (struct sockaddr *) &address, &length);
 
-    if(clientfd == ERROR) {
-        perror("Accept Error");
-        exit(EXIT_FAILURE);
+    // server loop
+    while(1) {
+        // attempt to accept the next incoming connection
+        int clientfd = accept(servfd, (struct sockaddr *) &address, &length);
+
+        // attempt failed print error and move on to the next client
+        if(clientfd == ERROR) {
+            perror("Accept Error");
+            continue;
+        }
+
+        // spin off a new thread for each client
+        pthread_t thread;
+        pthread_create(&thread, NULL, send_time, &clientfd);
     }
+
+    return 0;
+}
+
+void* send_time(void *sockfd) {
+    int clientfd = *((int*)(sockfd));
 
     // get the current date/time as a string
     time_t current_time;
     time(&current_time);
     const char *str_time = ctime(&current_time);
 
+    // send the current date and time to the client
     send(clientfd, str_time, strlen(str_time), 0);
 
-    return 0;
+    // close connection to the client
+    close(clientfd);
 }
